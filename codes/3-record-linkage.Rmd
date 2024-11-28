@@ -1,0 +1,115 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(data.table)
+library(blocking)
+library(stringr)
+library(stringi)
+library(data.table)
+library(RecordLinkage)
+library(ggplot2)
+```
+
+Single case example
+
+```{r}
+example_data <- fread("../data-sim/sim-multiple_1.csv")
+example_data[, rec_id_true := str_extract(rec_id, "\\d{4,}")]
+example_data[is.na(first_name), first_name:=""]
+example_data[is.na(second_name), second_name:=""]
+example_data[is.na(last_name), last_name:=""]
+example_data[is.na(region), region:=""]
+example_data[is.na(birth_date), birth_date:=""]
+example_data[is.na(personal_id), personal_id:=""]
+example_data[, txt:=tolower(paste0(first_name,second_name, last_name, region, birth_date, personal_id))]
+example_data[, unit_id := str_extract(rec_id, "\\d{4,}")]
+example_data[, unit_id_count:=.N, unit_id]
+example_data[unit_id_count > 1][order(unit_id)]
+
+pop_data <- example_data[str_detect(rec_id, "org")]
+pop_data[, x:=1:.N]
+dup_data <- example_data[str_detect(rec_id, "dup")]
+dup_data[, y:=1:.N]
+```
+
+True matches -- 25k
+
+```{r}
+matches <- merge(x = pop_data[, .(x, unit_id)],
+                 y = dup_data[, .(y, unit_id)],
+                 by = "unit_id")
+matches[, block_true := .GRP, x]
+```
+
+
+Record linkage
+
+```{r}
+set.seed(2024)
+result1 <- blocking(x = pop_data$txt, 
+                    y = dup_data$txt, 
+                    verbose = 1,
+                    n_threads = 8)
+```
+
+```{r}
+result1
+```
+
+Add information about blocks from the procedure
+
+```{r}
+matches[result1$result, on = c("x", "y"), block_est := i.block]
+```
+
+How many missed? 
+
+```{r}
+matches[, .N, is.na(block_est)][, p:=N/sum(N)*100][]
+```
+How many are in the same block as they suppose to be? All of them
+
+```{r}
+matches[!is.na(block_est), .(m=uniqueN(block_true)), block_est][,.N, keyby=m]
+```
+
+So: we miss 2.12% of records 
+
+Let's see if changing the epsilon improves the blocking procedure
+
+```{r}
+set.seed(2024)
+ann_control_pars <- controls_ann()
+ann_control_pars$nnd$epsilon <- 0.2
+
+result2 <- blocking(x = pop_data$txt, 
+                    y = dup_data$txt,  
+                    verbose = 1, 
+                    #true_blocks = matches[, .(x, y, block)], 
+                    n_threads = 8, 
+                    control_ann = ann_control_pars)
+```
+
+```{r}
+result2
+```
+
+Add information about blocks from the procedure
+
+```{r}
+matches[result2$result, on = c("x", "y"), block_est_eps := i.block]
+```
+
+How many missed? 
+
+```{r}
+matches[, .N, is.na(block_est_eps)][, p:=N/sum(N)*100][] ## now we miss 0,3%
+```
+How many are in the same block as they suppose to be? All of them.
+
+```{r}
+matches[!is.na(block_est), .(m=uniqueN(block_true)), block_est_eps][,.N, keyby=m]
+```
