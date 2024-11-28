@@ -7,15 +7,236 @@ output: html_notebook
 library(data.table)
 library(blocking)
 library(stringr)
+library(stringi)
+library(data.table)
+library(RecordLinkage)
+library(ggplot2)
+```
+
+## Simulation on RLdata 10000
+
+Generate data
+
+```{r}
+initial_data <- RLdata10000
+setDT(initial_data)
+initial_data[, x:=as.integer(rownames(initial_data))]
+initial_data[, y:=as.integer(rownames(initial_data))]
+initial_data[, ":="(fname_c2=ifelse(is.na(fname_c2), "", fname_c2),
+                    lname_c2=ifelse(is.na(lname_c2), "", lname_c2),
+                    bm = str_pad(bm, 2, "left", "0"),
+                    bd = str_pad(bd, 2, "left", "0"))]
+initial_data[, txt:=tolower(paste0(fname_c1,fname_c2, lname_c1, lname_c2, by, bm, bd))]
+initial_data[, rec_id := identity.RLdata10000]
+initial_data[, rec_id_count :=.N, rec_id]
+
+initial_data[rec_id_count == 2][order(rec_id)]
+```
+
+Simulations study:
+
++ RL10000 dataset
++ simple random sampling of 9000 records (without replacement)
+
+```{r}
+initial_data_sim <- copy(initial_data[sample(1:nrow(initial_data), nrow(initial_data)-1000, F), ])
+initial_data_sim[, rec_id_count :=.N, rec_id]
+initial_data_sim[, x:=1:.N]
+initial_data_sim[, y:=1:.N]
+```
+
+Simulation for:
+
++ nnd
++ 
+```{r}
+for (i in 1:4) {
+  
+  set.seed(2024+i)
+ 
+  initial_data_sim <- copy(initial_data[sample(1:nrow(initial_data), nrow(initial_data)-1000, F), ])
+  initial_data_sim[, block:=NULL]
+  initial_data_sim[, rec_id_count :=.N, rec_id]
+  initial_data_sim[, x:=1:.N]
+  initial_data_sim[, y:=1:.N]
+  
+  res <- blocking(x = initial_data_sim$txt, 
+                  deduplication = T, 
+                  ann = "nnd", 
+                  verbose = F,
+                  distance = "cosine",
+                  n_threads = 8)
+
+  
+  initial_data_sim[res$result, on = "x", block:=i.block]
+  initial_data_sim[res$result, on = "y", block:=i.block]
+  initial_data_sim[is.na(block), block:=max(initial_data_sim$block, na.rm=T) + 1:.N]
+  print(initial_data_sim[rec_id_count > 1, .(u=uniqueN(block)), rec_id][,.N, keyby=u][, p:=N/sum(N)*100][])
+
+}
 ```
 
 
 ```{r}
-sim1 <- fread("../data-sim/sim_1.csv")
-head(sim1)
+set.seed(2024)
+res <- blocking(x = initial_data$txt, 
+                deduplication = T, 
+                ann = "kd", 
+                verbose = T,
+                distance = "cosine",
+                n_threads = 8)
+
+initial_data[res$result, on = "x", block:=i.block]
+initial_data[res$result, on = "y", block:=i.block]
+initial_data[is.na(block), block:=max(initial_data$block, na.rm=T) + 1:.N]
+initial_data[rec_id_count > 1, .(u=uniqueN(block)), rec_id][,.N, keyby=u]
+```
+
+# Simulation study with geco3 
+
+
+
+```{r}
+sim1 <- fread("../data-sim/sim_10.csv")
+sim1[, ":="(x=1:.N, y = 1:.N)]
+sim1[is.na(first_name), first_name:=""]
+sim1[is.na(second_name), second_name:=""]
+sim1[is.na(last_name), last_name:=""]
+sim1[is.na(region), region:=""]
+sim1[is.na(birth_date), birth_date:=""]
+sim1[is.na(personal_id), personal_id:=""]
+sim1[, txt:=tolower(paste0(first_name,second_name, last_name, region, birth_date, personal_id))]
+sim1[, unit_id := str_extract(rec_id, "\\d{4,}")]
+sim1[, unit_id_count:=.N, unit_id]
+sim1[unit_id_count > 1][order(unit_id)]
 ```
 
 ```{r}
-sim1[, .N, .(plik=str_extract(`rec-id`, "rec-\\d{4}"))][, .N, keyby=N]
+set.seed(2024)
+start_time <- Sys.time()
+test <- blocking(x = sim1$txt,
+                 deduplication = T,
+                 verbose = 1,
+                 ann = "nnd",
+                 n_threads = 8)
+end_time <- Sys.time() - start_time
+as.numeric(end_time)
+
+sim1[test$result, on = "x", block:=i.block]
+sim1[test$result, on = "y", block:=i.block]
+sim1[is.na(block), block:=max(sim1$block, na.rm=T) + 1:.N]
+sim1[unit_id_count > 1, .(u=uniqueN(block)), unit_id][,.N, keyby=u][, p:=N/sum(N)][u == 1]$p
+```
+
+Simulation study
+
+Save results for specific methods along with timings
+
+```{r}
+sim_results <- list()
+files <- dir("../data-sim", full.names = T)
+k <- 1
+for (f in files[1:2]) {
+  cat("iteration:", k, "\n")
+  sim1 <- fread(f)
+  sim1[, ":="(x=1:.N, y = 1:.N)]
+  sim1[is.na(first_name), first_name:=""]
+  sim1[is.na(second_name), second_name:=""]
+  sim1[is.na(last_name), last_name:=""]
+  sim1[is.na(region), region:=""]
+  sim1[is.na(birth_date), birth_date:=""]
+  sim1[is.na(personal_id), personal_id:=""]
+  sim1[, txt:=tolower(paste0(first_name,second_name, last_name, region, birth_date, personal_id))]
+  sim1[, unit_id := str_extract(rec_id, "\\d{4,}")]
+  sim1[, unit_id_count:=.N, unit_id]
+ 
+  ### nnd
+  set.seed(2024+k)
+  start_time <- Sys.time()
+  result_nnd <- blocking(x = sim1$txt,deduplication = T,ann = "nnd",n_threads = 8)
+  time_nnd <- as.numeric(Sys.time() - start_time)
+  
+  sim1[result_nnd$result, on = "x", block:=i.block]
+  sim1[result_nnd$result, on = "y", block:=i.block]
+  sim1[is.na(block), block:=max(sim1$block, na.rm=T) + 1:.N]
+  p_nnd <- sim1[unit_id_count > 1, .(u=uniqueN(block)), unit_id][,.N, keyby=u][, p:=N/sum(N)][u == 1]$p
+  
+  sim1[, block:=NULL]
+  
+  ### hnsw
+  set.seed(2024+k)
+  start_time <- Sys.time()
+  result_hnsw <- blocking(x = sim1$txt,deduplication = T,ann = "hnsw",n_threads = 8)
+  time_hnsw <- as.numeric(Sys.time() - start_time)
+  
+  sim1[result_hnsw$result, on = "x", block:=i.block]
+  sim1[result_hnsw$result, on = "y", block:=i.block]
+  sim1[is.na(block), block:=max(sim1$block, na.rm=T) + 1:.N]
+  p_hnsw <- sim1[unit_id_count > 1, .(u=uniqueN(block)), unit_id][,.N, keyby=u][, p:=N/sum(N)][u == 1]$p
+  
+  sim1[, block:=NULL]
+  
+  ## annoy
+  set.seed(2024+k)
+  start_time <- Sys.time()
+  result_annoy <- blocking(x = sim1$txt, deduplication = T,ann = "annoy",n_threads = 8)
+  time_annoy <- as.numeric(Sys.time() - start_time)*60 ## in because it is in minutes
+  
+  sim1[result_annoy$result, on = "x", block:=i.block]
+  sim1[result_annoy$result, on = "y", block:=i.block]
+  sim1[is.na(block), block:=max(sim1$block, na.rm=T) + 1:.N]
+  p_annoy <- sim1[unit_id_count > 1, .(u=uniqueN(block)), unit_id][,.N, keyby=u][, p:=N/sum(N)][u == 1]$p
+  
+  sim1[, block:=NULL]
+  
+  ## mlpack::lsh
+  set.seed(2024+k)
+  start_time <- Sys.time()
+  result_lsh <- blocking(x = sim1$txt, deduplication = T, ann = "lsh", n_threads = 8)
+  time_lsh <- as.numeric(Sys.time() - start_time)
+  
+  sim1[result_lsh$result, on = "x", block:=i.block]
+  sim1[result_lsh$result, on = "y", block:=i.block]
+  sim1[is.na(block), block:=max(sim1$block, na.rm=T) + 1:.N]
+  p_lsh <- sim1[unit_id_count > 1, .(u=uniqueN(block)), unit_id][,.N, keyby=u][, p:=N/sum(N)][u == 1]$p
+  
+  sim1[, block:=NULL]
+  
+  sim_results[[k]] <- data.frame(
+    p_hnsw, time_hnsw, blocks_hnsw=NROW(unique(result_hnsw$result$block)),
+    p_nnd, time_nnd, blocks_nnd = NROW(unique(result_nnd$result$block)),
+    p_annoy, time_annoy, blocks_annoy = NROW(unique(result_annoy$result$block)),
+    p_lsh, time_lsh, blocks_lsh = NROW(unique(result_lsh$result$block))
+    )
+  k <- k + 1
+  
+}
+
+sim_results_df <- rbindlist(sim_results, idcol = "iteration")
+sim_results_df
+```
+
+
+```{r}
+sim_results_df |> 
+  melt(id.vars = "iteration") |> 
+  {\(x) x[, c("measure", "ann"):=tstrsplit(variable, "_")][]}() |>
+  #transform(value = ifelse(measure == "time", log(value), value)) |>
+  transform(measure = factor(measure, 
+                             c("p", "blocks", "time"),
+                             c("Recall", "# blocks", "Time (in sec)")),
+            ann = factor(ann, c("lsh", "annoy", "hnsw", "nnd"), 
+                         c("LSH (mlpack)", "RcppAnnoy", "RcppHNSW", "rnndescent"))) |> 
+  ggplot(data = _, aes(x = ann, y = value)) + 
+  geom_jitter(alpha = 0.1) + 
+  geom_boxplot() + 
+  facet_wrap(~measure, scales = "free_y") +
+  labs(x = "Approximate Nearest Neighbours", y = "") -> p1
+
+ggsave(filename = "../results/plot1-sim-results.pdf", plot = p1, width = 12, height = 5)
+```
+
+```{r}
+saveRDS(sim_results_df, file = "../results/sim-results-geco.rds")
 ```
 

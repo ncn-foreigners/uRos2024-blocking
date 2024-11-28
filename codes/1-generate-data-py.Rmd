@@ -41,10 +41,10 @@ class CorruptPolishLetters(CorruptValue):
     'ą': ['OŁ', 'OM', 'A'],
     'ę': ['EN', 'EŁ', 'E'],
     'i': ['Y', 'II'],
-    'u': ['Ó'],
-    'o': ['Ó',],
-    'ó': ['U', 'O'],
-    'ł': ['L', 'W'],
+    'uw': ['ÓW'],
+    'ow': ['UW',],
+    'ów': ['UW', 'OW'],
+    'ł': ['L'],
     'ń': ['N', 'NI'],
     'ś': ['SI', 'S'],
     'z': ['Ź', 'Ż'],
@@ -91,13 +91,13 @@ Generate data
 unicode_encoding_used = 'utf-8'
 rec_id_attr_name = 'rec_id'
 num_org_rec = 10000
-num_dup_rec = 5000
+num_dup_rec = 3000
 
-max_duplicate_per_record = 4
+max_duplicate_per_record = 1
 num_duplicates_distribution = 'zipf'
 
-max_modification_per_attr = 1
-num_modification_per_record = 4
+max_modification_per_attr = 3
+num_modification_per_record = 3
 
 basefunctions.check_unicode_encoding_exists(unicode_encoding_used)
 
@@ -164,12 +164,6 @@ wojewodztwo_attr = generator.GenerateFreqAttribute(
 
 birthdate_attr = generator.GenerateFuncAttribute(
     attribute_name = 'birth_date',
-    #Parametry do funkcji generowania dat urodzenia:
-    #mode_age : int : mode age in a population, used for triangular distribution, must be less than 100
-    #distribution : String : distribution from which birthyears will be generated.
-        #Options -> ["normal", "triangular", "uniform"]
-    #year_only : bool : decide if function should retrun birthyear or birthdate.
-    #format : String : format in which birthdate should be generated. Options -> ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY/MM/DD"]
     function = attrgenfunct.generate_birthdate,
     parameters = [45, "triangular", False, "DD/MM/YYYY"]
 )
@@ -180,34 +174,6 @@ number_id_attr = generator.GenerateFuncAttribute(
     function = generate_id_num,
 )
 
-edit_corruptor = corruptor.CorruptValueEdit(
-          position_function = corruptor.position_mod_normal,
-          char_set_funct = basefunctions.char_set_ascii,
-          insert_prob = 0.5,
-          delete_prob = 0.5,
-          substitute_prob = 0.0,
-          transpose_prob = 0.0
-          # muszą się sumować do 1
-)
-
-edit_corruptor2 = corruptor.CorruptValueEdit(
-          position_function = corruptor.position_mod_uniform,
-          char_set_funct = basefunctions.char_set_ascii,
-          insert_prob = 0.25,
-          delete_prob = 0.25,
-          substitute_prob = 0.25,
-          transpose_prob = 0.25
-)
-
-edit_corruptor3 = corruptor.CorruptValueEdit(
-          position_function = corruptor.position_mod_normal,
-          char_set_funct = basefunctions.char_set_ascii,
-          insert_prob = 0.0,
-          delete_prob = 0.5,
-          substitute_prob = 0.5,
-          transpose_prob = 0.0
-          # muszą się sumować do 1
-)
 
 ocr_corruptor = corruptor.CorruptValueOCR(
           position_function = corruptor.position_mod_normal,
@@ -229,15 +195,9 @@ phonetic_corruptor = corruptor.CorruptValuePhonetic(
 )
 
 missing_val_corruptor = corruptor.CorruptMissingValue()
-
-missing_val_corruptor_2 = corruptor.CorruptMissingValue(
-       missing_val='puste'
-)
-
+missing_val_corruptor_2 = corruptor.CorruptMissingValue(missing_val='NA')
 birthday_year_corruptor = corruptor.CorruptBirthYear(date_format="DD/MM/YYYY")
-
 polish_letters_corruptor = CorruptPolishLetters()
-
 
 attr_name_list = ['first_name', 'second_name', 'last_name', 'region', 'birth_date', 'personal_id']
 
@@ -263,16 +223,14 @@ attr_mod_prob_dictionary = {
     'personal_id': 0.2
 }
 
-
 attr_mod_data_dictionary = {
     'first_name': [(0.8, polish_letters_corruptor), (0.2, missing_val_corruptor)],
-    'second_name': [(0.8, polish_letters_corruptor), (0.2, keyboard_corruptor)],
+    'second_name': [(0.8, missing_val_corruptor), (0.2, keyboard_corruptor)],
     'last_name': [(0.8, polish_letters_corruptor), (0.2, missing_val_corruptor_2)],
     'region': [(1.0, missing_val_corruptor)],
-    'birth_date': [(0.5, birthday_year_corruptor), (0.5, missing_val_corruptor)],
+    'birth_date': [(1, birthday_year_corruptor)],
     'personal_id': [(0.4, keyboard_corruptor), (0.4, phonetic_corruptor), (0.2, missing_val_corruptor)]
 }
-
 
 test_data_corruptor = corruptor.CorruptDataSet(number_of_org_records = num_org_rec,
                                                 number_of_mod_records = num_dup_rec,
@@ -288,15 +246,13 @@ test_data_corruptor = corruptor.CorruptDataSet(number_of_org_records = num_org_r
 Function to generate data
 
 ```{python}
-def generate_dataframes(data_generator, data_corruptor, num_sim=5, path=None, corrupt_name_args=['switch', 0.1, 0, 1, 2]):
+def generate_dataframes(data_generator, data_corruptor, num_sim=5, path=None, corrupt_name_args=['switch', 0.05, 0, 1, 2]):
   for k in range(1, num_sim+1):
     data_generator.output_file_name = f"{path}_{k}.csv"
 
     data_generator.rec_dict = {}
     rec_dict_1 = {}
-
     rec_dict_1 = data_generator.generate()
-
     rec_dict = data_corruptor.corrupt_records(rec_dict_1)
     rec_dict = data_corruptor.corrupt_names(
         rec_dict = rec_dict_1,
@@ -314,7 +270,7 @@ def generate_dataframes(data_generator, data_corruptor, num_sim=5, path=None, co
 Generate files
 
 ```{python}
-NUM_SIMULATIONS = 3
+NUM_SIMULATIONS = 50
 PATH = "../data-sim/sim"
 random.seed(2024)
 generate_dataframes(test_data_generator, test_data_corruptor, num_sim = NUM_SIMULATIONS, path = PATH)
