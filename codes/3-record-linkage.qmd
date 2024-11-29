@@ -1,9 +1,12 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "Record linkage supported by the `blocking` package"
+author: "Maciej Beręsewicz"
+output:
+  html_document:
+    df_print: paged
 ---
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 library(data.table)
 library(blocking)
 library(stringr)
@@ -75,8 +78,6 @@ How many are in the same block as they suppose to be? All of them
 ```{r}
 matches[!is.na(block_est), .(m=uniqueN(block_true)), block_est][,.N, keyby=m]
 ```
-
-So: we miss 2.12% of records 
 
 Let's see if changing the epsilon improves the blocking procedure
 

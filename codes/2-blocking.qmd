@@ -1,9 +1,12 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "Deduplication supported by the `blocking` package"
+author: "Maciej Beręsewicz"
+output:
+  html_document:
+    df_print: paged
 ---
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 library(data.table)
 library(blocking)
 library(stringr)
@@ -108,7 +111,7 @@ Simulation study
 
 Save results for specific methods along with timings
 
-```{r}
+```{r eval=F}
 sim_results <- list()
 files <- dir("../data-sim", full.names = T)
 k <- 1
@@ -193,8 +196,13 @@ sim_results_df
 ```
 
 
+
+```{r eval = F}
+saveRDS(sim_results_df, file = "../results/sim-results-geco.rds")
+```
+
 ```{r}
-sim_results_df |> 
+readRDS("../results/sim-results-geco.rds") |> 
   melt(id.vars = "iteration") |> 
   {\(x) x[, c("measure", "ann"):=tstrsplit(variable, "_")][]}() |>
   #transform(value = ifelse(measure == "time", log(value), value)) |>
@@ -210,11 +218,8 @@ sim_results_df |>
   theme(axis.text = element_text(size = 10),
         strip.text = element_text(size = 13)) + 
   labs(x = "Approximate Nearest Neighbours", y = "") -> p1
-
-ggsave(filename = "../results/plot1-sim-results.pdf", plot = p1, width = 12, height = 5)
+p1
+#ggsave(filename = "../results/plot1-sim-results.pdf", plot = p1, width = 12, height = 5)
 ```
 
-```{r}
-saveRDS(sim_results_df, file = "../results/sim-results-geco.rds")
-```
 
